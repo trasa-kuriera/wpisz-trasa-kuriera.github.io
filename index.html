@@ -1,0 +1,1118 @@
+<!doctype html>
+<html lang="pl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Trasa kuriera</title>
+<meta name="theme-color" content="#E2591B">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Trasa">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="icon" href="icon-192.png">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=Barlow:wght@400;500;600&family=JetBrains+Mono:wght@500&display=swap">
+<style>
+/* Layout: one-column work screen for a phone in one hand; next stop on top, big targets, action bar pinned to the bottom edge. */
+:root{
+  --bg:#EDF0F3; --surface:#FFFFFF; --sunk:#E2E6EB; --ink:#14202B; --muted:#5A6774; --line:#CDD4DB;
+  --accent:#E2591B; --accent-ink:#FFFFFF;
+  --deliv:#1F5FBF; --deliv-bg:#E3ECFA; --pick:#0D7F70; --pick-bg:#DDF2EE;
+  --ok:#2E7D32; --warn:#B26A00; --warn-bg:#FFF1D6; --bad:#C62828; --bad-bg:#FDE4E4;
+  --walk:#7A4FD0;
+  --f-display:"Barlow Condensed","Arial Narrow",system-ui,sans-serif;
+  --f-body:"Barlow",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --f-mono:"JetBrains Mono",ui-monospace,Menlo,Consolas,monospace;
+  --r:10px;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#0F161D; --surface:#18222C; --sunk:#111A22; --ink:#E8EDF2; --muted:#9AA8B5; --line:#2A3743;
+  --accent:#F07135; --accent-ink:#1A0D05;
+  --deliv:#7FAEF5; --deliv-bg:#1A2B44; --pick:#5FD1BF; --pick-bg:#123430;
+  --ok:#7BC77F; --warn:#F2B04A; --warn-bg:#3A2A0E; --bad:#FF8A80; --bad-bg:#3D1A1A; --walk:#B39BF0;
+  color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0F161D; --surface:#18222C; --sunk:#111A22; --ink:#E8EDF2; --muted:#9AA8B5; --line:#2A3743;
+  --accent:#F07135; --accent-ink:#1A0D05;
+  --deliv:#7FAEF5; --deliv-bg:#1A2B44; --pick:#5FD1BF; --pick-bg:#123430;
+  --ok:#7BC77F; --warn:#F2B04A; --warn-bg:#3A2A0E; --bad:#FF8A80; --bad-bg:#3D1A1A; --walk:#B39BF0;
+  color-scheme:dark}
+[hidden]{display:none!important}
+*,*::before,*::after{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0}
+body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);z-index:30;background:var(--bg)}
+html,body{background:var(--bg);color:var(--ink)}
+body{font-family:var(--f-body);font-size:16px;line-height:1.4;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:calc(12px + env(safe-area-inset-top,0px)) 130px}
+.wrap{max-width:680px;margin:0 auto;display:flex;flex-direction:column;gap:14px}
+h1,h2,h3{font-family:var(--f-display);font-weight:700;margin:0;text-wrap:balance;letter-spacing:.01em}
+h1{font-size:30px;line-height:1}
+h2{font-size:21px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
+.mono{font-family:var(--f-mono);font-variant-numeric:tabular-nums}
+.muted{color:var(--muted)}
+small{font-size:13px}
+button,.btn{font:600 15px/1 var(--f-body);border-radius:8px;border:1px solid var(--line);background:var(--surface);color:var(--ink);padding:11px 14px;min-height:44px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:7px;text-decoration:none;-webkit-tap-highlight-color:transparent}
+button:focus-visible,.btn:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+button:disabled{opacity:.5;cursor:default}
+.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.ghost{background:transparent}
+.small{min-height:36px;padding:8px 11px;font-size:14px}
+svg.i{width:20px;height:20px;flex:none;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+
+/* header */
+.top{display:flex;justify-content:space-between;align-items:flex-end;gap:10px;flex-wrap:wrap}
+.top .date{font-family:var(--f-mono);font-size:13px;color:var(--muted)}
+.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+.stat{background:var(--surface);border-radius:var(--r);padding:10px 10px 8px;min-width:0}
+.stat b{display:block;font:700 26px/1 var(--f-display);font-variant-numeric:tabular-nums}
+.stat span{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em}
+@media (max-width:420px){.stats{grid-template-columns:repeat(2,1fr)}}
+.banner{border-radius:var(--r);padding:10px 12px;display:flex;gap:10px;align-items:flex-start;font-size:14px;flex-wrap:wrap}
+.banner.warn{background:var(--warn-bg);color:var(--ink)}
+.banner.info{background:var(--sunk)}
+.banner .grow{flex:1 1 220px;min-width:0}
+.src{display:inline-flex;align-items:center;gap:6px;font-size:13px;color:var(--muted)}
+.dot{width:9px;height:9px;border-radius:50%;background:var(--muted);flex:none}
+.dot.live{background:var(--ok);box-shadow:0 0 0 3px color-mix(in srgb,var(--ok) 25%,transparent)}
+
+/* next stop */
+.next{background:var(--surface);border-radius:14px;border:2px solid var(--accent);padding:14px;display:flex;flex-direction:column;gap:12px}
+.next .eyebrow{font:700 13px/1 var(--f-display);letter-spacing:.12em;text-transform:uppercase;color:var(--accent)}
+.next .addr{font:700 28px/1.05 var(--f-display)}
+.eta{display:flex;gap:14px;flex-wrap:wrap;font-size:14px;color:var(--muted)}
+.eta b{color:var(--ink);font-family:var(--f-mono);font-weight:500}
+.row{display:flex;gap:8px;flex-wrap:wrap}
+.row > .grow{flex:1 1 auto}
+
+/* parcels */
+.parcel{border-top:1px solid var(--line);padding-top:10px;display:grid;grid-template-columns:auto 1fr;gap:4px 10px;align-items:start}
+.parcel:first-of-type{border-top:0;padding-top:0}
+.tag{font:700 12px/1 var(--f-display);letter-spacing:.08em;text-transform:uppercase;padding:5px 7px 4px;border-radius:5px;white-space:nowrap}
+.tag.D{background:var(--deliv-bg);color:var(--deliv)}
+.tag.P{background:var(--pick-bg);color:var(--pick)}
+.tag.walk{background:transparent;color:var(--walk);border:1px solid var(--walk)}
+.tag.chk{background:var(--warn-bg);color:var(--warn)}
+.tag.bad{background:var(--bad-bg);color:var(--bad)}
+.tag.ok{background:transparent;color:var(--ok);border:1px solid var(--ok)}
+.p-main{min-width:0}
+.p-main .who{font-weight:600}
+.p-main .where{font-size:15px}
+.p-main .note{font-size:13px;color:var(--muted)}
+.p-act{grid-column:1/-1;display:flex;gap:8px;flex-wrap:wrap;margin-top:6px}
+.p-act .done{flex:1 1 150px}
+.done.D{background:var(--deliv);border-color:var(--deliv);color:var(--surface)}
+.done.P{background:var(--pick);border-color:var(--pick);color:var(--surface)}
+
+/* list */
+.list{display:flex;flex-direction:column;gap:8px}
+.stopc{background:var(--surface);border-radius:var(--r);padding:10px 12px;display:grid;grid-template-columns:34px 1fr auto;gap:10px;align-items:center}
+.num{width:34px;height:34px;border-radius:50%;background:var(--sunk);display:grid;place-items:center;font:700 17px/1 var(--f-display)}
+.stopc .t{min-width:0}
+.stopc .t .a{font-weight:600;overflow-wrap:anywhere}
+.stopc .t .s{font-size:13px;color:var(--muted);display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-top:3px}
+.stopc .eta2{text-align:right;font-family:var(--f-mono);font-size:14px}
+.stopc .eta2 small{display:block;color:var(--muted);font-family:var(--f-body)}
+.stopc.open{grid-template-columns:34px 1fr}
+.stopc .more{grid-column:1/-1}
+.walkline{border-left:3px dotted var(--walk);margin-left:15px;padding-left:12px;font-size:13px;color:var(--walk)}
+details.sec{background:var(--surface);border-radius:var(--r);padding:4px 12px}
+details.sec>summary{cursor:pointer;padding:10px 0;font-weight:600;list-style:none;display:flex;justify-content:space-between;gap:8px}
+details.sec>summary::-webkit-details-marker{display:none}
+.doneitem{display:flex;gap:10px;align-items:center;padding:8px 0;border-top:1px solid var(--line);font-size:14px}
+.doneitem .grow{flex:1;min-width:0;overflow-wrap:anywhere}
+
+/* map sketch */
+.map{background:var(--surface);border-radius:var(--r);padding:8px}
+.map svg{width:100%;height:auto;display:block}
+
+/* action bar */
+.bar{position:fixed;left:0;right:0;bottom:0;z-index:20;background:color-mix(in srgb,var(--bg) 88%,transparent);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);border-top:1px solid var(--line);padding:10px max(16px,env(safe-area-inset-right,0px)) calc(10px + env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-left,0px))}
+.bar .in{max-width:680px;margin:0 auto;display:grid;grid-template-columns:1.4fr 1fr 1fr;gap:8px}
+.bar label.btn{position:relative;overflow:hidden}
+.bar input[type=file]{position:absolute;inset:0;opacity:0;cursor:pointer}
+
+/* sheet */
+dialog{border:0;border-radius:14px;padding:0;background:var(--surface);color:var(--ink);width:min(560px,calc(100vw - 24px));max-height:calc(100dvh - 40px)}
+dialog::backdrop{background:rgba(10,16,22,.55)}
+.sheet{padding:16px;display:flex;flex-direction:column;gap:12px;overflow:auto}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.grid3{display:grid;grid-template-columns:2fr 1fr 1fr;gap:10px}
+@media (max-width:420px){.grid3{grid-template-columns:1fr 1fr}.grid3 .f:first-child{grid-column:1/-1}}
+.f{display:flex;flex-direction:column;gap:4px;min-width:0}
+.f label{font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
+input,select,textarea{font:16px var(--f-body);color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:10px;min-height:44px;width:100%;box-sizing:border-box}
+textarea{min-height:120px;resize:vertical}
+.seg{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.seg button[aria-pressed="true"].D{background:var(--deliv);color:var(--surface);border-color:var(--deliv)}
+.seg button[aria-pressed="true"].P{background:var(--pick);color:var(--surface);border-color:var(--pick)}
+.toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(86px + env(safe-area-inset-bottom,0px));background:var(--ink);color:var(--bg);padding:10px 14px;border-radius:8px;font-size:14px;z-index:40;max-width:calc(100vw - 32px);display:flex;gap:12px;align-items:center}
+.toast button{min-height:30px;padding:6px 10px;background:transparent;color:var(--bg);border-color:var(--bg)}
+.busy{display:flex;gap:10px;align-items:center;font-size:14px}
+.spin{width:16px;height:16px;border:2px solid var(--line);border-top-color:var(--accent);border-radius:50%;animation:sp .8s linear infinite;flex:none}
+@keyframes sp{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion:reduce){.spin{animation:none}}
+.empty{background:var(--surface);border-radius:14px;padding:20px;text-align:left;display:flex;flex-direction:column;gap:10px}
+</style>
+</head>
+<body>
+<div class="wrap" id="app">
+  <div class="top">
+    <div><div class="date" id="date"></div><h1>Trasa kuriera</h1></div>
+    <div class="src" id="src"><span class="dot"></span><span>Bez danych o ruchu</span></div>
+  </div>
+  <div class="stats" id="stats"></div>
+  <div id="banners"></div>
+  <div id="busy" hidden class="banner info busy"><span class="spin"></span><span id="busyTxt"></span></div>
+  <div id="main"></div>
+  <div class="map" id="mapBox" hidden><div id="lmap" style="height:260px;border-radius:8px;overflow:hidden"></div><svg id="map" viewBox="0 0 400 240" role="img" aria-label="Szkic trasy" hidden></svg></div>
+  <div id="doneBox"></div>
+  <details class="sec" id="settings">
+    <summary><span>Ustawienia trasy</span><span class="muted">baza, powrót, dane</span></summary>
+    <div class="sheet" style="padding:0 0 12px">
+      <div class="f"><label for="startIn">Punkt startu (baza / magazyn)</label>
+        <div class="row"><input id="startIn" class="grow" placeholder="np. ul. Postępu 15, Warszawa" style="flex:1 1 200px"><button id="startSave" class="small">Zapisz</button></div>
+        <small class="muted" id="startInfo"></small></div>
+      <label class="row" style="align-items:center;gap:10px"><input type="checkbox" id="retBase" style="width:22px;min-height:22px"> Wracam do bazy na koniec trasy</label>
+      <div class="f"><label for="walkM">Odcinek pieszy, gdy paczki są bliżej niż (m)</label><input id="walkM" type="number" min="0" max="500" step="10" inputmode="numeric"></div>
+      <label class="row" style="align-items:center;gap:10px"><input type="checkbox" id="useGps" style="width:22px;min-height:22px"> Licz trasę od mojej pozycji GPS</label>
+      <div class="f"><label for="kTT">Klucz TomTom (korki na żywo, dokładne adresy)</label>
+        <input id="kTT" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="wklej klucz">
+        <small class="muted">Darmowy: załóż konto na <a href="https://developer.tomtom.com/" target="_blank" rel="noopener">developer.tomtom.com</a>, skopiuj „API Key” z panelu.</small></div>
+      <div class="f"><label for="kClaude">Klucz Claude API (lepszy odczyt etykiet, płatny)</label>
+        <input id="kClaude" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="sk-ant-…">
+        <small class="muted">Opcjonalny. Z <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener">console.anthropic.com</a>. Bez niego tekst czyta telefon, a adres poprawiasz przed zapisem.</small></div>
+      <div class="row"><button id="keysSave" class="small primary">Zapisz klucze</button></div>
+      <div class="row">
+        <button id="pasteBtn" class="small">Wklej listę adresów</button>
+        <button id="clearAll" class="small">Zacznij nowy dzień</button>
+      </div>
+      <div id="clearConfirm" hidden class="banner warn"><span class="grow">Usunąć wszystkie przystanki z tej trasy?</span><button id="clearYes" class="small">Tak, usuń</button><button id="clearNo" class="small ghost">Anuluj</button></div>
+      <small class="muted" id="capInfo"></small>
+    </div>
+  </details>
+</div>
+
+<div class="bar"><div class="in">
+  <label class="btn primary" for="cam"><svg class="i" viewBox="0 0 24 24"><path d="M3 8h3l2-3h8l2 3h3v11H3z"/><circle cx="12" cy="13" r="4"/></svg>Skanuj etykietę<input id="cam" type="file" accept="image/*" capture="environment"></label>
+  <label class="btn" for="gal"><svg class="i" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 16l5-5 4 4 3-3 6 6"/></svg>Zdjęcia<input id="gal" type="file" accept="image/*" multiple></label>
+  <button id="addBtn"><svg class="i" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>Wpisz</button>
+</div></div>
+
+<dialog id="sheet"><form class="sheet" id="form" method="dialog">
+  <h3 id="formTitle" style="font-size:24px">Nowa przesyłka</h3>
+  <div class="seg" role="group" aria-label="Rodzaj">
+    <button type="button" class="D" data-kind="D" aria-pressed="true">Doręczenie</button>
+    <button type="button" class="P" data-kind="P" aria-pressed="false">Odbiór</button>
+  </div>
+  <div class="f"><label for="fName">Odbiorca / nadawca</label><input id="fName" autocomplete="off"></div>
+  <div class="grid3">
+    <div class="f"><label for="fStreet">Ulica</label><input id="fStreet" autocomplete="off"></div>
+    <div class="f"><label for="fNo">Nr</label><input id="fNo" autocomplete="off"></div>
+    <div class="f"><label for="fFlat">Lokal</label><input id="fFlat" autocomplete="off"></div>
+  </div>
+  <div class="grid2">
+    <div class="f"><label for="fPost">Kod</label><input id="fPost" inputmode="numeric" autocomplete="off" placeholder="00-000"></div>
+    <div class="f"><label for="fCity">Miejscowość</label><input id="fCity" autocomplete="off"></div>
+  </div>
+  <div class="grid2">
+    <div class="f"><label for="fPhone">Telefon</label><input id="fPhone" inputmode="tel" autocomplete="off"></div>
+    <div class="f"><label for="fCount">Paczek</label><input id="fCount" type="number" min="1" inputmode="numeric"></div>
+  </div>
+  <div class="grid2">
+    <div class="f"><label for="fFrom">Najwcześniej (od)</label><input id="fFrom" type="time"></div>
+    <div class="f"><label for="fTo">Najpóźniej (do)</label><input id="fTo" type="time"></div>
+  </div>
+  <div class="f"><label for="fNote">Uwagi (kod do domofonu, godziny, pobranie)</label><input id="fNote" autocomplete="off"></div>
+  <details id="fRaw" hidden><summary class="muted" style="cursor:pointer;padding:6px 0">Tekst odczytany z etykiety</summary><pre id="fRawTxt" style="white-space:pre-wrap;font:13px/1.35 var(--f-mono);background:var(--sunk);padding:10px;border-radius:8px;max-height:180px;overflow:auto;margin:0"></pre></details>
+  <div id="fDel" hidden class="banner warn"><span class="grow">Usunąć tę przesyłkę z trasy?</span><button type="button" id="fDelYes" class="small">Usuń</button></div>
+  <div class="row">
+    <button type="submit" class="primary grow" id="fSave">Zapisz</button>
+    <button type="button" id="fRemove" class="ghost">Usuń</button>
+    <button type="button" id="fCancel" class="ghost">Anuluj</button>
+  </div>
+</form></dialog>
+
+<dialog id="pasteSheet"><form class="sheet" id="pasteForm" method="dialog">
+  <h3 style="font-size:24px">Wklej listę adresów</h3>
+  <p class="muted" style="margin:0">Jeden adres w linii. Dopisz „odbiór”, jeśli to odbiór przesyłki.</p>
+  <textarea id="pasteTxt" placeholder="ul. Puławska 145, 02-715 Warszawa&#10;odbiór: ul. Woronicza 17, Warszawa"></textarea>
+  <div class="row"><button type="submit" class="primary grow">Dodaj do trasy</button><button type="button" id="pasteCancel" class="ghost">Anuluj</button></div>
+</form></dialog>
+
+<div id="toast" class="toast" hidden></div>
+
+<script>
+(() => {
+"use strict";
+const TT = "TomTom Maps";
+const $ = s => document.querySelector(s);
+const el = (tag, attrs = {}, ...kids) => {
+  const e = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs)) {
+    if (v == null || v === false) continue;
+    if (k === "class") e.className = v;
+    else if (k.startsWith("on")) e.addEventListener(k.slice(2), v);
+    else if (k === "html") e.innerHTML = v;
+    else e.setAttribute(k, v === true ? "" : v);
+  }
+  for (const k of kids.flat()) if (k != null && k !== false) e.append(k.nodeType ? k : document.createTextNode(String(k)));
+  return e;
+};
+const uid = () => Math.random().toString(36).slice(2, 10);
+const ICON = {
+  nav: '<svg class="i" viewBox="0 0 24 24"><path d="M3 11l18-8-8 18-2-8z"/></svg>',
+  walk: '<svg class="i" viewBox="0 0 24 24"><circle cx="13" cy="4" r="2"/><path d="M10 21l2-6 3 3v3M9 12l2-4 4 2 2 3M11 8l-3 3"/></svg>',
+  phone: '<svg class="i" viewBox="0 0 24 24"><path d="M5 4h4l2 5-3 2a11 11 0 005 5l2-3 5 2v4a2 2 0 01-2 2A16 16 0 013 6a2 2 0 012-2z"/></svg>',
+  check: '<svg class="i" viewBox="0 0 24 24"><path d="M4 12l5 5L20 6"/></svg>',
+  x: '<svg class="i" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg>',
+  edit: '<svg class="i" viewBox="0 0 24 24"><path d="M4 20h4L19 9l-4-4L4 16z"/></svg>',
+  route: '<svg class="i" viewBox="0 0 24 24"><circle cx="6" cy="18" r="2"/><circle cx="18" cy="6" r="2"/><path d="M8 18h7a3 3 0 000-6H9a3 3 0 010-6h7"/></svg>'
+};
+const iconBtn = (icon, label, attrs = {}) => { const b = el("button", attrs); b.innerHTML = ICON[icon] + "<span></span>"; b.lastChild.textContent = label; return b; };
+
+/* ---------- geometry ---------- */
+const R = 6371000, rad = d => d * Math.PI / 180;
+function hav(a, b) {
+  const dLa = rad(b.lat - a.lat), dLo = rad(b.lon - a.lon);
+  const h = Math.sin(dLa / 2) ** 2 + Math.cos(rad(a.lat)) * Math.cos(rad(b.lat)) * Math.sin(dLo / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(h));
+}
+const ROAD = 1.35, CITY_KMH = 24, WALK_MS = 1.3, SERVICE_S = 120;
+const driveEst = m => (m * ROAD) / (CITY_KMH / 3.6);
+const hasPos = s => s && typeof s.lat === "number" && typeof s.lon === "number" && isFinite(s.lat) && isFinite(s.lon);
+
+/* ---------- state ---------- */
+const DEMO = () => ({
+  v: 1, demo: true, walkM: 100, ret: false,
+  start: { label: "Baza, ul. Postępu 15, Warszawa", lat: 52.18005, lon: 21.00305, geo: "demo" },
+  stops: [
+    ["D", "Anna K.", "ul. Puławska", "145", "12", "02-715", 52.19352, 21.02178],
+    ["D", "Biuro Rachunkowe Lex", "ul. Puławska", "143", "", "02-715", 52.19398, 21.02205],
+    ["P", "Sklep Ceramika", "ul. Odyńca", "25", "", "02-606", 52.19602, 21.01302],
+    ["D", "Tomasz W.", "ul. Odyńca", "31", "4", "02-606", 52.19571, 21.01103],
+    ["P", "Pracownia Krawiecka", "ul. Woronicza", "17", "", "02-625", 52.18806, 21.01904],
+    ["D", "Marta Z.", "ul. Rakowiecka", "30", "8", "02-528", 52.20301, 21.00795],
+    ["P", "Księgarnia Pod Lipą", "ul. Madalińskiego", "50", "", "02-581", 52.20402, 21.01903],
+    ["D", "Piotr N.", "ul. Madalińskiego", "48", "2", "02-581", 52.20398, 21.01960],
+    ["D", "Ewa S.", "ul. Wołoska", "12", "", "02-675", 52.18190, 21.00030],
+    ["D", "Jan M.", "ul. Racławicka", "99", "15", "02-634", 52.19620, 21.00410]
+  ].map(([k, name, street, no, flat, post, lat, lon]) => ({
+    id: uid(), kind: k, name, street, no, flat, post, city: "Warszawa", phone: "", note: "", count: 1,
+    lat, lon, geo: "demo", status: "todo", at: null, check: false
+  })),
+  route: null
+});
+const EMPTY = () => ({ v: 1, demo: false, walkM: 100, ret: false, start: null, stops: [], route: null });
+let S = DEMO();
+let caps = { tt: "unknown" };
+
+const LS = "kurier.trasa.v1";
+function lsGet() { try { const t = localStorage.getItem(LS); return t ? JSON.parse(t) : null; } catch { return null; } }
+function lsSet(v) { try { localStorage.setItem(LS, JSON.stringify(v)); } catch {} }
+function save() { S.savedAt = Date.now(); lsSet(S); }
+
+/* ---------- helpers ---------- */
+const addrLine = s => [s.street, s.no].filter(Boolean).join(" ") + (s.flat ? "/" + s.flat : "");
+const addrFull = s => [addrLine(s), [s.post, s.city].filter(Boolean).join(" ")].filter(Boolean).join(", ");
+const geoQuery = s => [[s.street, s.no].filter(Boolean).join(" "), [s.post, s.city].filter(Boolean).join(" "), "Polska"].filter(Boolean).join(", ");
+const fmtMin = s => { if (s == null || !isFinite(s)) return "–"; const m = Math.round(s / 60); return m < 60 ? m + " min" : Math.floor(m / 60) + " h " + String(m % 60).padStart(2, "0"); };
+const fmtClock = t => new Date(t).toLocaleTimeString("pl-PL", { hour: "2-digit", minute: "2-digit" });
+const fmtKm = m => m == null ? "–" : (m / 1000).toFixed(m < 10000 ? 1 : 0).replace(".", ",") + " km";
+const gmaps = (dest, mode = "driving", origin = null, wps = []) => {
+  const p = new URLSearchParams({ api: "1", destination: dest, travelmode: mode });
+  if (origin) p.set("origin", origin);
+  if (wps.length) p.set("waypoints", wps.join("|"));
+  return "https://www.google.com/maps/dir/?" + p.toString();
+};
+const posStr = s => hasPos(s) && s.geo !== "est" ? s.lat.toFixed(6) + "," + s.lon.toFixed(6) : addrFull(s);
+
+const hhmm = sec => String(Math.floor(sec / 3600)).padStart(2, "0") + ":" + String(Math.floor(sec % 3600 / 60)).padStart(2, "0");
+function winOf(list) {
+  const f = list.map(s => hm(s.from)).filter(v => v != null), t = list.map(s => hm(s.to)).filter(v => v != null);
+  return { from: f.length ? Math.max(...f) : null, to: t.length ? Math.min(...t) : null };
+}
+const winTxt = w => w.from != null && w.to != null ? hhmm(w.from) + "–" + hhmm(w.to) : w.from != null ? "od " + hhmm(w.from) : w.to != null ? "do " + hhmm(w.to) : "";
+function pinNext(list) {
+  const t = Date.now(); S.stops.forEach(s => s.pin = list.includes(s) ? t : 0);
+  save(); optimize(true).then(() => toast("Ten postój jest teraz następny"));
+}
+let toastT;
+function toast(msg, undo) {
+  const t = $("#toast"); t.replaceChildren(el("span", {}, msg));
+  if (undo) t.append(el("button", { type: "button", onclick: () => { undo(); t.hidden = true; } }, "Cofnij"));
+  t.hidden = false; clearTimeout(toastT); toastT = setTimeout(() => t.hidden = true, undo ? 6000 : 3500);
+}
+let busyN = 0;
+function busy(on, txt) { busyN += on ? 1 : -1; if (busyN < 0) busyN = 0; if (txt) $("#busyTxt").textContent = txt; $("#busy").hidden = busyN === 0; }
+
+/* ---------- keys & settings (only on this phone) ---------- */
+const KEYS = "kurier.keys.v1";
+function keysGet() { try { return JSON.parse(localStorage.getItem(KEYS) || "{}"); } catch { return {}; } }
+function keysSet(k) { try { localStorage.setItem(KEYS, JSON.stringify(k)); } catch {} }
+let K = keysGet();
+const ttKey = () => (K.tomtom || "").trim();
+const clKey = () => (K.claude || "").trim();
+
+/* ---------- small fetch helper ---------- */
+async function getJSON(url, opts = {}, ms = 20000) {
+  const ctl = new AbortController(); const t = setTimeout(() => ctl.abort(), ms);
+  try {
+    const r = await fetch(url, { ...opts, signal: ctl.signal });
+    const body = await r.json().catch(() => null);
+    if (!r.ok) { const e = new Error((body && body.error && (body.error.message || body.error.type)) || ("HTTP " + r.status)); e.status = r.status; throw e; }
+    return body;
+  } finally { clearTimeout(t); }
+}
+
+/* ---------- TomTom (REST, own key) ---------- */
+async function ttGeocode(s) {
+  if (!ttKey()) return null;
+  try {
+    const u = `https://api.tomtom.com/search/2/geocode/${encodeURIComponent(geoQuery(s))}.json?key=${encodeURIComponent(ttKey())}&countrySet=PL&limit=1&language=pl-PL`;
+    const j = await getJSON(u);
+    const p = j && j.results && j.results[0] && j.results[0].position;
+    if (p && typeof p.lat === "number") { caps.tt = "ok"; return { lat: p.lat, lon: p.lon }; }
+    return null;
+  } catch (e) { if (e.status === 403 || e.status === 401) caps.tt = "bad"; console.warn("TomTom geocode", e); return null; }
+}
+function parseTTRoute(j, n) {
+  const r = j && j.routes && j.routes[0]; if (!r) return null;
+  const sum = r.summary || {};
+  const legs = (r.legs || []).map(l => ({ sec: l.summary.travelTimeInSeconds, m: l.summary.lengthInMeters, delay: l.summary.trafficDelayInSeconds || 0 }));
+  return { sec: sum.travelTimeInSeconds, m: sum.lengthInMeters, delay: sum.trafficDelayInSeconds || 0, legs: legs.length === n - 1 ? legs : null };
+}
+async function ttRoute(points, bestOrder) {
+  if (!ttKey() || points.length < 2 || points.length > 150) return null;
+  try {
+    const locs = points.map(p => p.lat.toFixed(6) + "," + p.lon.toFixed(6)).join(":");
+    let u = `https://api.tomtom.com/routing/1/calculateRoute/${locs}/json?key=${encodeURIComponent(ttKey())}&traffic=true&travelMode=car&routeType=fastest&departAt=now`;
+    if (bestOrder) u += "&computeBestOrder=true";
+    const j = await getJSON(u, {}, 30000);
+    const r = parseTTRoute(j, points.length); if (!r) return null;
+    if (bestOrder && Array.isArray(j.optimizedWaypoints)) r.optimized = j.optimizedWaypoints.slice().sort((a, b) => a.optimizedIndex - b.optimizedIndex).map(w => w.providedIndex);
+    caps.tt = "ok";
+    return r;
+  } catch (e) { if (e.status === 403 || e.status === 401) caps.tt = "bad"; console.warn("TomTom route", e); return null; }
+}
+
+/* ---------- OpenStreetMap geocoding (free, max 1 request / second) ---------- */
+let nomLast = 0;
+async function nominatim(params) {
+  const wait = nomLast + 1100 - Date.now(); if (wait > 0) await new Promise(r => setTimeout(r, wait));
+  nomLast = Date.now();
+  const u = "https://nominatim.openstreetmap.org/search?" + new URLSearchParams({ format: "jsonv2", limit: "1", countrycodes: "pl", "accept-language": "pl", ...params });
+  const j = await getJSON(u);
+  return j && j[0] ? { lat: parseFloat(j[0].lat), lon: parseFloat(j[0].lon) } : null;
+}
+async function osmGeocode(s) {
+  try {
+    const street = [s.no, (s.street || "").replace(/^(ul\.|ulica)\s*/i, "")].filter(Boolean).join(" ").trim();
+    let c = null;
+    if (street && (s.city || s.post)) c = await nominatim({ street, ...(s.city ? { city: s.city } : {}), ...(s.post ? { postalcode: s.post } : {}) });
+    if (!c && street && s.city) c = await nominatim({ street, city: s.city });
+    if (!c) c = await nominatim({ q: geoQuery(s) });
+    return c;
+  } catch (e) { console.warn("OSM", e); return null; }
+}
+
+/* ---------- geocoding ---------- */
+async function geocodeStop(s) {
+  if (s.geo === "demo") return;
+  let c = await ttGeocode(s);
+  if (c) { s.lat = c.lat; s.lon = c.lon; s.geo = "tt"; return; }
+  c = await osmGeocode(s);
+  if (c) { s.lat = c.lat; s.lon = c.lon; s.geo = "osm"; return; }
+  if (hasPos(s)) s.geo = "est";
+}
+
+/* ---------- images ---------- */
+async function shrink(file, max = 1568, q = 0.85) {
+  const url = URL.createObjectURL(file);
+  try {
+    const img = await new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = url; });
+    const k = Math.min(1, max / Math.max(img.naturalWidth, img.naturalHeight));
+    const c = document.createElement("canvas"); c.width = Math.round(img.naturalWidth * k); c.height = Math.round(img.naturalHeight * k);
+    c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
+    return await new Promise(res => c.toBlob(res, "image/jpeg", q));
+  } finally { URL.revokeObjectURL(url); }
+}
+const b64 = blob => new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(String(r.result).split(",")[1]); r.onerror = rej; r.readAsDataURL(blob); });
+
+/* ---------- Claude API (own key, optional) ---------- */
+function parseJSONLoose(t) {
+  try { return JSON.parse(t); } catch {}
+  const f = /```(?:json)?\s*([\s\S]*?)```/.exec(t); if (f) { try { return JSON.parse(f[1]); } catch {} }
+  const a = t.search(/[\[{]/), b = Math.max(t.lastIndexOf("]"), t.lastIndexOf("}"));
+  if (a >= 0 && b > a) { try { return JSON.parse(t.slice(a, b + 1)); } catch {} }
+  return null;
+}
+async function claudeJSON(prompt, blobs = []) {
+  const content = [];
+  for (const bl of blobs) content.push({ type: "image", source: { type: "base64", media_type: "image/jpeg", data: await b64(bl) } });
+  content.push({ type: "text", text: prompt });
+  const j = await getJSON("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: {
+      "content-type": "application/json", "x-api-key": clKey(), "anthropic-version": "2026-10-21",
+      "anthropic-dangerous-direct-browser-access": "true", "anthropic-beta": "server-side-fallback-2026-07-01"
+    },
+    body: JSON.stringify({ model: "claude-opus-5-5", max_tokens: 8000, output_config: { effort: "low" }, fallbacks: "default", messages: [{ role: "user", content }] })
+  }, 90000);
+  if (j.stop_reason === "refusal") throw new Error("refusal");
+  const text = (j.content || []).filter(c => c.type === "text").map(c => c.text).join("");
+  const v = parseJSONLoose(text); if (v == null) throw new Error("invalid_json");
+  return v;
+}
+
+/* ---------- on-phone text recognition (free) ---------- */
+let tessP = null;
+function loadTesseract() {
+  if (window.Tesseract) return Promise.resolve(window.Tesseract);
+  if (!tessP) tessP = new Promise((res, rej) => { const s = document.createElement("script"); s.src = "https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js"; s.onload = () => res(window.Tesseract); s.onerror = () => { tessP = null; rej(new Error("tesseract")); }; document.head.append(s); });
+  return tessP;
+}
+async function ocrText(blob) {
+  const T = await loadTesseract();
+  const r = await T.recognize(blob, "pol");
+  return (r && r.data && r.data.text) || "";
+}
+/* Pull the most likely destination address out of raw label text. */
+function parseLabelText(raw) {
+  const lines = raw.split(/\n+/).map(l => l.replace(/[|_]+/g, " ").replace(/\s+/g, " ").trim()).filter(l => l.length > 1);
+  const low = lines.map(l => l.toLowerCase());
+  const isPick = /zlecenie odbioru|odbi[oó]r przesy|pickup|nadanie/.test(low.join(" "));
+  // start reading at the recipient block when the label marks one
+  let from = low.findIndex(l => /(odbiorca|adresat|receiver|consignee|ship to|deliver to|^do[:\s])/.test(l));
+  if (isPick) { const n = low.findIndex(l => /(nadawca|sender|shipper|miejsce odbioru|^od[:\s])/.test(l)); if (n >= 0) from = n; }
+  const block = from >= 0 ? lines.slice(from, from + 8) : lines;
+  const all = block.join("\n");
+  const pc = /\b(\d{2})\s?[-–]\s?(\d{3})\s+([A-ZĄĆĘŁŃÓŚŹŻ][\p{L}.\- ]{1,40})/u.exec(all);
+  const stRe = /\b((?:ul\.?|ulica|al\.?|aleja|aleje|pl\.?|plac|os\.?|osiedle|rondo|skwer)\s*[\p{L}0-9.\- ]+?)\s+(\d+[A-Za-z]?)(?:\s*(?:\/|m\.?|lok\.?|m)\s*(\d+[A-Za-z]?))?\b/iu;
+  let st = stRe.exec(all);
+  if (!st) st = /\b([A-ZĄĆĘŁŃÓŚŹŻ][\p{L}.\-]+(?: [A-ZĄĆĘŁŃÓŚŹŻ]?[\p{L}.\-]+){0,3})\s+(\d+[A-Za-z]?)(?:\s*\/\s*(\d+[A-Za-z]?))?\b/u.exec(block.filter(l => !/\d{2}\s?-\s?\d{3}/.test(l)).join("\n"));
+  const ph = /(?:\+?48[\s-]?)?(\d{3})[\s-]?(\d{3})[\s-]?(\d{3})\b/.exec(all);
+  let name = "";
+  if (st) { const idx = block.findIndex(l => l.includes(st[2]) && l.includes(st[1].split(" ").pop())); if (idx > 0) name = block[idx - 1].replace(/^(odbiorca|adresat|receiver|do|nadawca|od)[:\s]*/i, ""); }
+  const cod = /(pobranie|cod)[^\d]{0,12}(\d+[.,]?\d*)\s*(zł|pln)?/i.exec(raw);
+  return {
+    kind: isPick ? "P" : "D", name: name.slice(0, 60),
+    street: st ? st[1].replace(/\s+/g, " ").trim() : "", no: st ? st[2] : "", flat: st && st[3] ? st[3] : "",
+    post: pc ? pc[1] + "-" + pc[2] : "", city: pc ? pc[3].replace(/\s+(tel|telefon|phone).*$/i, "").trim() : "",
+    phone: ph ? ph[1] + " " + ph[2] + " " + ph[3] : "", note: cod ? "Pobranie " + cod[2] + " zł" : "", count: 1
+  };
+}
+
+/* ---------- label reading ---------- */
+const OCR_PROMPT = `Na zdjęciach są etykiety przewozowe paczek albo zlecenia odbioru (Polska: InPost, DPD, DHL, GLS, UPS, FedEx, Poczta Polska, Orlen Paczka i inne). Kurier potrzebuje adresu, pod który ma JECHAĆ.
+Dla każdego zdjęcia, w tej samej kolejności, zwróć jeden obiekt. Odpowiedz tylko tablicą JSON:
+[{"kind":"D" albo "P","name":string,"street":string,"no":string,"flat":string,"post":string,"city":string,"phone":string,"note":string,"count":number,"from":"HH:MM"|"","to":"HH:MM"|"","confidence":"high"|"medium"|"low"}]
+Zasady:
+- "D" = doręczenie: bierz adres ODBIORCY (Odbiorca / Receiver / Ship to / Do), nie nadawcy.
+- "P" = odbiór: zlecenie odbioru / pickup – bierz adres, z którego trzeba odebrać przesyłkę.
+- "street" z przedrostkiem (ul., al., pl., os.), "no" = numer budynku, "flat" = numer lokalu, "post" w formacie 00-000.
+- "from"/"to": okno czasowe z etykiety lub zlecenia; pusty tekst, jeśli brak.
+- "note": kod do domofonu, pobranie (kwota), piętro, uwagi; pusty tekst, jeśli brak.
+- Jeśli na zdjęciu nie ma czytelnego adresu, zwróć obiekt z pustymi polami i "confidence":"low".`;
+const toStop = r => ({
+  id: uid(), kind: r.kind === "P" ? "P" : "D", name: String(r.name || ""), street: String(r.street || ""), no: String(r.no || ""),
+  flat: String(r.flat || ""), post: String(r.post || ""), city: String(r.city || ""), phone: String(r.phone || ""), note: String(r.note || ""),
+  count: Math.max(1, parseInt(r.count) || 1), from: hm(r.from) != null ? hhmm(hm(r.from)) : "", to: hm(r.to) != null ? hhmm(hm(r.to)) : "",
+  lat: null, lon: null, geo: null, status: "todo", at: null, check: r.confidence === "low"
+});
+
+async function readLabels(files) {
+  files = Array.from(files).filter(f => /^image\//.test(f.type) || /\.(jpe?g|png|webp|gif|heic)$/i.test(f.name));
+  if (!files.length) return;
+  busy(true, files.length > 1 ? `Czytam ${files.length} etykiety…` : "Czytam etykietę…");
+  try {
+    const blobs = [];
+    for (const f of files) { try { blobs.push(await shrink(f, clKey() ? 1568 : 2000)); } catch { toast("Nie mogę otworzyć tego zdjęcia. Zrób je jeszcze raz."); } }
+    if (!blobs.length) return;
+    if (clKey()) {
+      const added = [];
+      for (let i = 0; i < blobs.length; i += 5) {
+        const chunk = blobs.slice(i, i + 5);
+        try {
+          const res = await claudeJSON(OCR_PROMPT + `\n\nLiczba zdjęć: ${chunk.length}.`, chunk);
+          for (const r of (Array.isArray(res) ? res : [res])) if (r && (r.street || r.city || r.post)) added.push(toStop(r));
+        } catch (e) {
+          toast(e.status === 401 ? "Klucz Claude jest nieprawidłowy. Sprawdź go w ustawieniach." : e.status === 429 ? "Za dużo zapytań do Claude. Odczekaj chwilę." : e.status === 400 && /credit/i.test(e.message) ? "Brak środków na koncie Claude API." : "Nie udało się odczytać etykiety. Spróbuj ponownie lub wpisz adres.");
+        }
+      }
+      if (!added.length) { toast("Na zdjęciu nie znalazłam adresu. Spróbuj ostrzejszego zdjęcia albo wpisz ręcznie."); return; }
+      await addStops(added);
+      toast(added.length === 1 ? `Dodano: ${addrLine(added[0])}` : `Dodano ${added.length} przesyłek`);
+      return;
+    }
+    // free path: read the text on the phone, then let the courier confirm the address
+    busy(true, "Rozpoznaję tekst na telefonie (pierwszy raz trwa dłużej)…");
+    try {
+      for (const bl of blobs) {
+        let text = "";
+        try { text = await ocrText(bl); } catch { toast("Nie udało się uruchomić rozpoznawania tekstu. Sprawdź internet."); break; }
+        const r = parseLabelText(text);
+        await new Promise(res => { ocrQueue.push({ r, text, done: res }); if (ocrQueue.length === 1) openForm(null, r, text); });
+      }
+    } finally { busy(false); }
+  } finally { busy(false); }
+}
+const ocrQueue = [];
+
+async function addStops(list) {
+  if (S.demo) { const keep = { walkM: S.walkM, ret: S.ret }; S = Object.assign(EMPTY(), keep); }
+  // merge duplicates: same address & kind -> bump count
+  for (const s of list) {
+    const dup = S.stops.find(o => o.status === "todo" && o.kind === s.kind && addrFull(o).toLowerCase() === addrFull(s).toLowerCase() && (o.name || "").toLowerCase() === (s.name || "").toLowerCase());
+    if (dup) { dup.count += s.count; continue; }
+    S.stops.push(s);
+    busy(true, "Szukam adresu na mapie…");
+    try { await geocodeStop(s); } finally { busy(false); }
+  }
+  save(); render();
+  await optimize(true);
+}
+
+/* ---------- clustering & optimization ---------- */
+function clusterize(stops, walkM) {
+  const left = stops.slice(), out = [];
+  while (left.length) {
+    const seed = left.shift(), mem = [seed];
+    let grew = true;
+    while (grew) {
+      grew = false;
+      for (let i = left.length - 1; i >= 0; i--) {
+        const s = left[i];
+        if (mem.some(m => hav(m, s) <= walkM) && hav(seed, s) <= walkM * 2) { mem.push(s); left.splice(i, 1); grew = true; }
+      }
+    }
+    const lat = mem.reduce((a, s) => a + s.lat, 0) / mem.length, lon = mem.reduce((a, s) => a + s.lon, 0) / mem.length;
+    // park at the member closest to the centroid; walk the rest
+    const park = mem.slice().sort((a, b) => hav(a, { lat, lon }) - hav(b, { lat, lon }))[0];
+    const seq = [park], rest = mem.filter(m => m !== park);
+    while (rest.length) { const last = seq[seq.length - 1]; rest.sort((a, b) => hav(last, a) - hav(last, b)); seq.push(rest.shift()); }
+    let walk = 0; for (let i = 1; i < seq.length; i++) walk += hav(seq[i - 1], seq[i]);
+    if (seq.length > 1) walk += hav(seq[seq.length - 1], park);
+    const froms = mem.map(s => hm(s.from)).filter(v => v != null), tos = mem.map(s => hm(s.to)).filter(v => v != null);
+    out.push({ ids: seq.map(s => s.id), lat: park.lat, lon: park.lon, walkM: Math.round(walk),
+      svc: mem.length * SERVICE_S + walk / WALK_MS,
+      win: { from: froms.length ? Math.max(...froms) : null, to: tos.length ? Math.min(...tos) : null },
+      pin: Math.max(0, ...mem.map(s => s.pin || 0)) });
+  }
+  return out;
+}
+/* "HH:MM" -> seconds since midnight */
+function hm(v) { const m = /^(\d{1,2})[:.](\d{2})/.exec(v || ""); return m ? (+m[1]) * 3600 + (+m[2]) * 60 : null; }
+const secOfDay = t => { const d = new Date(t); return d.getHours() * 3600 + d.getMinutes() * 60 + d.getSeconds(); };
+/* time-based cost: driving + waiting for "from" windows + heavy penalty for arriving after "to" */
+function pathCost(order, D, ret, nodes, t0) {
+  let t = t0, late = 0, prev = 0;
+  for (const i of order) {
+    t += driveEst(D[prev][i + 1]);
+    const w = nodes[i].win || {};
+    if (w.from != null && t < w.from) t = w.from;
+    if (w.to != null && t > w.to) late += t - w.to;
+    t += nodes[i].svc || 0; prev = i + 1;
+  }
+  if (ret && order.length) t += driveEst(D[prev][0]);
+  return (t - t0) + late * 20;
+}
+function lateness(order, legsSec, nodes, t0) {
+  const res = []; let t = t0;
+  order.forEach((i, k) => { t += legsSec[k] || 0; const w = nodes[i].win || {}; if (w.from != null && t < w.from) t = w.from; res.push(w.to != null && t > w.to ? t - w.to : 0); t += nodes[i].svc || 0; });
+  return res;
+}
+function solve(start, nodes, ret) {
+  // pinned stops ("jako następny") go first, newest pin first; the rest is optimized from the last pinned one
+  const pinned = nodes.map((c, i) => [c, i]).filter(([c]) => c.pin).sort((a, b) => b[0].pin - a[0].pin).map(([, i]) => i);
+  if (pinned.length) {
+    const restIdx = nodes.map((_, i) => i).filter(i => !pinned.includes(i));
+    const last = nodes[pinned[pinned.length - 1]];
+    const sub = solve(last, restIdx.map(i => ({ ...nodes[i], pin: 0 })), ret);
+    const map = o => pinned.concat(o.map(j => restIdx[j]));
+    return { best: map(sub.best), nn: map(sub.nn) };
+  }
+  const pts = [start, ...nodes], n = nodes.length;
+  const D = pts.map(a => pts.map(b => hav(a, b)));
+  const t0 = secOfDay(Date.now());
+  const pc = o => pathCost(o, D, ret, nodes, t0);
+  // nearest neighbour
+  const nn = [], used = new Set(); let cur = 0;
+  for (let k = 0; k < n; k++) { let best = -1, bd = Infinity; for (let j = 0; j < n; j++) if (!used.has(j) && D[cur][j + 1] < bd) { bd = D[cur][j + 1]; best = j; } nn.push(best); used.add(best); cur = best + 1; }
+  // 2-opt + or-opt
+  let o = nn.slice(), improved = true, guard = 0;
+  while (improved && guard++ < 200) {
+    improved = false;
+    for (let i = 0; i < n - 1; i++) for (let j = i + 1; j < n; j++) {
+      const c = o.slice(0, i).concat(o.slice(i, j + 1).reverse(), o.slice(j + 1));
+      if (pc(c) + 0.5 < pc(o)) { o = c; improved = true; }
+    }
+    for (let len = 1; len <= 3; len++) for (let i = 0; i + len <= n; i++) {
+      const seg = o.slice(i, i + len), rest = o.slice(0, i).concat(o.slice(i + len));
+      for (let k = 0; k <= rest.length; k++) {
+        if (k === i) continue;
+        const c = rest.slice(0, k).concat(seg, rest.slice(k));
+        if (pc(c) + 0.5 < pc(o)) { o = c; improved = true; }
+      }
+    }
+  }
+  return { best: o, nn, D };
+}
+function gpsPos() {
+  if (S.gps === false || !navigator.geolocation) return Promise.resolve(null);
+  return new Promise(res => {
+    const t = setTimeout(() => res(null), 9000);
+    navigator.geolocation.getCurrentPosition(p => { clearTimeout(t); res({ lat: p.coords.latitude, lon: p.coords.longitude, label: "Twoja pozycja (GPS)", gps: true }); },
+      () => { clearTimeout(t); res(null); }, { enableHighAccuracy: true, timeout: 8000, maximumAge: 60000 });
+  });
+}
+function currentPos() {
+  const done = S.stops.filter(s => s.status !== "todo" && s.at && hasPos(s)).sort((a, b) => b.at - a.at)[0];
+  if (done) return { lat: done.lat, lon: done.lon, label: addrLine(done) };
+  if (S.start && hasPos(S.start)) return { lat: S.start.lat, lon: S.start.lon, label: S.start.label };
+  return null;
+}
+let optimizing = false;
+async function optimize(quiet) {
+  if (optimizing) return; optimizing = true;
+  try {
+    const todo = S.stops.filter(s => s.status === "todo");
+    const missing = todo.filter(s => !hasPos(s));
+    if (missing.length) {
+      busy(true, "Szukam adresów na mapie…");
+      try { for (const s of missing) await geocodeStop(s); } finally { busy(false); }
+    }
+    const placed = todo.filter(hasPos);
+    if (!placed.length) { S.route = null; save(); render(); return; }
+    let from = (S.demo ? null : await gpsPos()) || currentPos();
+    if (!from) from = { lat: placed[0].lat, lon: placed[0].lon, label: addrLine(placed[0]) };
+    const clusters = clusterize(placed, S.walkM || 0);
+    const { best, nn } = solve(from, clusters, S.ret);
+    let cands = [best];
+    if (nn.join() !== best.join()) cands.push(nn);
+    const hasPin = clusters.some(c => c.pin), hasWin = clusters.some(c => c.win.from != null || c.win.to != null);
+    if (!S.ret && !hasPin && !hasWin && best.length > 2) cands.push(best.slice().reverse());
+    const t0 = secOfDay(Date.now());
+    let chosen = best, legs = null, total = null, source = "est";
+    if (ttKey() && caps.tt !== "bad" && clusters.length >= 1 && clusters.length < 148) {
+      busy(true, "Sprawdzam aktualny ruch na drogach…");
+      try {
+        let bestT = null;
+        // extra candidate: TomTom's own traffic-aware ordering (fixed start and end)
+        const tries = cands.map(c => ({ c }));
+        if (!hasPin && !hasWin && best.length > 2) tries.unshift({ c: best, bestOrder: true });
+        for (const t of tries) {
+          let c = t.c;
+          const pts = [from, ...c.map(i => clusters[i])]; if (S.ret) pts.push(from);
+          const r = await ttRoute(pts, t.bestOrder);
+          if (caps.tt === "bad") break;
+          if (!r) continue;
+          if (t.bestOrder && r.optimized) {
+            // providedIndex counts intermediate waypoints only (start and end stay fixed)
+            const mids = S.ret ? c : c.slice(0, -1), tail = S.ret ? [] : [c[c.length - 1]];
+            const re = r.optimized.map(k => mids[k]);
+            if (re.length === mids.length && re.every(v => v != null)) c = re.concat(tail);
+          }
+          // score = live driving time + penalty for missing a time window
+          const legSec = r.legs ? r.legs.map(l => l.sec) : c.map(() => r.sec / c.length);
+          r.score = r.sec + 20 * lateness(c, legSec, clusters, t0).reduce((a, b) => a + b, 0);
+          if (!bestT || r.score < bestT.score - 1) { bestT = r; chosen = c; }
+        }
+        if (bestT) { total = bestT; legs = bestT.legs; source = "tt"; }
+      } finally { busy(false); }
+    }
+    const pts = [from, ...chosen.map(i => clusters[i])]; if (S.ret) pts.push(from);
+    if (!legs) {
+      const est = []; for (let i = 1; i < pts.length; i++) { const m = hav(pts[i - 1], pts[i]); est.push({ sec: driveEst(m), m: m * ROAD, delay: 0 }); }
+      if (total) { const sum = est.reduce((a, l) => a + l.sec, 0) || 1; legs = est.map(l => ({ ...l, sec: l.sec / sum * total.sec, delay: l.sec / sum * (total.delay || 0) })); }
+      else legs = est;
+    }
+    S.route = { clusters: chosen.map(i => clusters[i]), legs, total: total || { sec: legs.reduce((a, l) => a + l.sec, 0), m: legs.reduce((a, l) => a + (l.m || 0), 0), delay: 0 }, source, at: Date.now(), from, ret: S.ret, unplaced: todo.filter(s => !hasPos(s)).map(s => s.id) };
+    save(); render();
+    if (!quiet) toast(source === "tt" ? "Trasa ułożona z uwzględnieniem aktualnych korków" : "Trasa ułożona (bez danych o korkach)");
+  } finally { optimizing = false; }
+}
+
+/* ---------- actions ---------- */
+function mark(id, status) {
+  const s = S.stops.find(x => x.id === id); if (!s) return;
+  const prev = { status: s.status, at: s.at };
+  s.status = status; s.at = status === "todo" ? null : Date.now();
+  save(); render();
+  const label = status === "done" ? (s.kind === "D" ? "Doręczono" : "Odebrano") : status === "failed" ? "Nieudana próba" : "Przywrócono";
+  toast(`${label}: ${addrLine(s)}`, () => { s.status = prev.status; s.at = prev.at; save(); render(); });
+}
+function removeFinished() {
+  const gone = S.stops.filter(s => s.status === "done");
+  S.stops = S.stops.filter(s => s.status !== "done");
+  save(); render();
+  toast(`Usunięto ${gone.length} zakończonych`, () => { S.stops.push(...gone); save(); render(); });
+}
+
+/* ---------- form ---------- */
+let editId = null, formKind = "D";
+function setKind(k) { formKind = k; document.querySelectorAll(".seg button").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.kind === k))); }
+function openForm(s, pre, raw) {
+  editId = s ? s.id : null;
+  const d = s || pre || null;
+  $("#formTitle").textContent = s ? "Popraw przesyłkę" : pre ? "Sprawdź adres z etykiety" : "Nowa przesyłka";
+  setKind(d ? d.kind : "D");
+  $("#fName").value = d ? d.name || "" : ""; $("#fStreet").value = d ? d.street || "" : ""; $("#fNo").value = d ? d.no || "" : ""; $("#fFlat").value = d ? d.flat || "" : "";
+  $("#fPost").value = d ? d.post || "" : ""; $("#fCity").value = d && d.city ? d.city : (S.demo ? "" : (S.stops.find(x => x.city)?.city || "")); $("#fPhone").value = d ? d.phone || "" : "";
+  $("#fCount").value = d ? d.count || 1 : 1; $("#fNote").value = d ? d.note || "" : "";
+  $("#fFrom").value = d && d.from ? d.from : ""; $("#fTo").value = d && d.to ? d.to : "";
+  $("#fRemove").hidden = !s; $("#fDel").hidden = true;
+  $("#fRaw").hidden = !raw; $("#fRawTxt").textContent = raw || ""; $("#fRaw").open = !!raw && !(pre && pre.street);
+  try { $("#sheet").showModal(); } catch { $("#sheet").setAttribute("open", ""); }
+}
+function closeForm() { try { $("#sheet").close(); } catch { $("#sheet").removeAttribute("open"); ocrNext(); } }
+function ocrNext() { const q = ocrQueue.shift(); if (q) q.done(); }
+function openSettings() { const d = $("#settings"); d.open = true; d.scrollIntoView({ behavior: "smooth", block: "start" }); }
+
+/* ---------- rendering ---------- */
+function stat(v, l) { return el("div", { class: "stat" }, el("b", {}, v), el("span", {}, l)); }
+function parcelRow(s, opts = {}) {
+  const tags = [el("span", { class: "tag " + s.kind }, s.kind === "D" ? "Doręczenie" : "Odbiór")];
+  const main = el("div", { class: "p-main" },
+    el("div", { class: "who" }, s.name || "—", s.count > 1 ? el("span", { class: "muted" }, ` · ${s.count} szt.`) : null),
+    el("div", { class: "where" }, addrLine(s)),
+    s.note ? el("div", { class: "note" }, s.note) : null,
+    winTxt({ from: hm(s.from), to: hm(s.to) }) ? el("div", {}, el("span", { class: "tag chk" }, "Okno " + winTxt({ from: hm(s.from), to: hm(s.to) }))) : null,
+    s.check ? el("div", {}, el("span", { class: "tag chk" }, "Sprawdź adres z etykietą")) : null,
+    s.geo === "est" ? el("div", { class: "note" }, "Położenie przybliżone") : null
+  );
+  const row = el("div", { class: "parcel" }, el("div", {}, tags), main);
+  if (opts.actions) {
+    const act = el("div", { class: "p-act" });
+    act.append(iconBtn("check", s.kind === "D" ? "Doręczono" : "Odebrano", { class: "done " + s.kind, onclick: () => mark(s.id, "done") }));
+    act.append(iconBtn("x", "Nieudana", { class: "small ghost", onclick: () => mark(s.id, "failed") }));
+    if (opts.walk) act.append(el("a", { class: "btn small ghost", href: gmaps(posStr(s), "walking"), target: "_blank", rel: "noopener", html: ICON.walk + "Pieszo" }));
+    if (s.phone) act.append(el("a", { class: "btn small ghost", href: "tel:" + s.phone.replace(/\s/g, ""), html: ICON.phone }, el("span", { class: "mono" }, s.phone)));
+    act.append(iconBtn("edit", "Popraw", { class: "small ghost", onclick: () => openForm(s) }));
+    row.append(act);
+  }
+  return row;
+}
+
+function render() {
+  const now = Date.now();
+  $("#date").textContent = new Date().toLocaleDateString("pl-PL", { weekday: "long", day: "numeric", month: "long" });
+  const todo = S.stops.filter(s => s.status === "todo"), fin = S.stops.filter(s => s.status !== "todo");
+  const nD = S.stops.filter(s => s.kind === "D"), nP = S.stops.filter(s => s.kind === "P");
+  const dD = nD.filter(s => s.status === "done").length, dP = nP.filter(s => s.status === "done").length;
+  const R0 = S.route;
+  const ids = new Set(R0 ? R0.clusters.flatMap(c => c.ids) : []);
+  const fresh = todo.filter(s => !ids.has(s.id));
+
+  // source badge
+  const src = $("#src"); src.replaceChildren();
+  const live = R0 && R0.source === "tt";
+  src.append(el("span", { class: "dot" + (live ? " live" : "") }), el("span", {}, live ? `Ruch na żywo · ${fmtClock(R0.at)}` : caps.tt === "ok" ? "TomTom podłączony" : "Bez danych o ruchu"));
+
+  // remaining time
+  let remSec = null, remM = null;
+  if (R0) {
+    remSec = 0; remM = 0;
+    R0.clusters.forEach((c, i) => {
+      const open = c.ids.map(id => S.stops.find(s => s.id === id)).filter(s => s && s.status === "todo");
+      if (!open.length) return;
+      remSec += (R0.legs[i]?.sec || 0) + open.length * SERVICE_S + c.walkM / WALK_MS; remM += R0.legs[i]?.m || 0;
+    });
+  }
+  $("#stats").replaceChildren(
+    stat(`${dD}/${nD.length}`, "Doręczenia"), stat(`${dP}/${nP.length}`, "Odbiory"),
+    stat(R0 ? fmtMin(remSec) : "–", "Zostało"), stat(R0 ? fmtKm(remM) : "–", "Do przejechania"));
+
+  // banners
+  const B = $("#banners"); B.replaceChildren();
+  if (S.demo) B.append(el("div", { class: "banner info" }, el("span", { class: "grow" }, el("b", {}, "Przykładowa trasa. "), "Tak wygląda ułożony dzień. Zeskanuj pierwszą etykietę, a przykład zniknie."), el("button", { class: "small", onclick: () => { S = EMPTY(); save(); render(); } }, "Wyczyść przykład")));
+  if (!S.demo && !S.start && S.gps === false) B.append(el("div", { class: "banner warn" }, el("span", { class: "grow" }, "Ustaw punkt startu (bazę), żeby trasa zaczynała się w dobrym miejscu."), el("button", { class: "small", onclick: () => { $("#settings").open = true; $("#startIn").focus(); } }, "Ustaw")));
+  if (caps.tt === "bad") B.append(el("div", { class: "banner warn" }, el("span", { class: "grow" }, "Klucz TomTom nie działa. Sprawdź go w ustawieniach."), el("button", { class: "small", onclick: openSettings }, "Ustawienia")));
+  else if (!ttKey() && !S.demo && S.stops.length && !K.hideTT) B.append(el("div", { class: "banner info" }, el("span", { class: "grow" }, "Korki na żywo: wklej darmowy klucz TomTom w ustawieniach. Bez niego kolejność liczę po odległości, a Mapy Google omijają korki dopiero w trakcie jazdy."), el("button", { class: "small", onclick: openSettings }, "Dodaj klucz"), el("button", { class: "small ghost", onclick: () => { K.hideTT = true; keysSet(K); render(); } }, "Później")));
+  if (fresh.length && R0) B.append(el("div", { class: "banner warn" }, el("span", { class: "grow" }, `${fresh.length} nowe przesyłki poza trasą.`), iconBtn("route", "Przelicz trasę", { class: "small primary", onclick: () => optimize() })));
+
+  const M = $("#main"); M.replaceChildren();
+  if (!S.stops.length) {
+    M.append(el("div", { class: "empty" }, el("h3", { style: "font-size:24px" }, "Pusta trasa"),
+      el("p", { class: "muted", style: "margin:0" }, "Zrób zdjęcie etykiety przyciskiem na dole. Adres trafi na listę, a trasa ułoży się sama. Paczki bliżej siebie niż " + (S.walkM || 100) + " m połączę w jeden postój do obejścia pieszo."),
+      el("div", { class: "row" }, el("button", { onclick: () => { S = DEMO(); save(); render(); optimize(true); } }, "Pokaż przykład"))));
+  } else if (!R0) {
+    M.append(el("div", { class: "empty" }, el("h3", { style: "font-size:24px" }, `${todo.length} przesyłek na liście`),
+      el("p", { class: "muted", style: "margin:0" }, "Ułożę kolejność od bazy, łącząc bliskie adresy w odcinki piesze."),
+      el("div", { class: "row" }, iconBtn("route", "Ułóż trasę", { class: "primary grow", onclick: () => optimize() }))));
+    const L = el("div", { class: "list" }); todo.forEach(s => L.append(el("div", { class: "stopc open" }, el("div", { class: "num" }, "·"), el("div", { class: "t" }, parcelRow(s, { actions: true })))));
+    M.append(L);
+  } else {
+    // route view
+    let t = now, nextShown = false, n = 0;
+    const L = el("div", { class: "list" });
+    R0.clusters.forEach((c, i) => {
+      const members = c.ids.map(id => S.stops.find(s => s.id === id)).filter(Boolean);
+      const open = members.filter(s => s.status === "todo");
+      if (!open.length) return;
+      n++;
+      const leg = R0.legs[i] || { sec: 0, delay: 0 };
+      t += (leg.sec || 0) * 1000;
+      const win = winOf(open);
+      let waitS = 0;
+      if (win.from != null && secOfDay(t) < win.from) { waitS = win.from - secOfDay(t); t += waitS * 1000; }
+      const arrive = t;
+      const lateS = win.to != null ? Math.max(0, secOfDay(arrive) - win.to) : 0;
+      t += (open.length * SERVICE_S + c.walkM / WALK_MS) * 1000;
+      const walk = open.length > 1;
+      const parkDest = members[0];
+      if (!nextShown) {
+        nextShown = true;
+        const card = el("section", { class: "next", "aria-label": "Następny postój" },
+          el("div", { class: "eyebrow" }, walk ? `Postój ${n} · pieszo ${open.length} adresy` : `Następny · postój ${n}`),
+          el("div", { class: "addr" }, walk ? `${parkDest.street} i okolice` : addrLine(open[0])),
+          el("div", { class: "eta" },
+            el("span", {}, "Dojazd ", el("b", {}, fmtMin(leg.sec))),
+            el("span", {}, "Na miejscu ", el("b", {}, fmtClock(arrive))),
+            leg.delay > 60 ? el("span", { style: "color:var(--warn)" }, "Korek +" + fmtMin(leg.delay)) : null,
+            winTxt(win) ? el("span", {}, "Okno ", el("b", {}, winTxt(win))) : null,
+            waitS > 60 ? el("span", { style: "color:var(--warn)" }, "Czekasz " + fmtMin(waitS)) : null,
+            lateS > 60 ? el("span", { style: "color:var(--bad)" }, "Spóźnienie " + fmtMin(lateS)) : null,
+            walk ? el("span", { style: "color:var(--walk)" }, `Pieszo ok. ${c.walkM} m`) : null),
+          el("div", { class: "row" },
+            el("a", { class: "btn primary grow", href: gmaps(posStr(walk ? parkDest : open[0]), "driving"), target: "_blank", rel: "noopener", html: ICON.nav + (walk ? "Jedź na postój" : "Nawiguj") })),
+          walk ? el("div", { class: "walkline" }, "Zaparkuj przy " + addrLine(parkDest) + " i obejdź adresy w tej kolejności:") : null,
+          ...open.map(s => parcelRow(s, { actions: true, walk }))
+        );
+        M.append(card);
+        // multi-stop link for the next few stops
+        const nextPts = [];
+        R0.clusters.slice(i).forEach(cc => { const o = cc.ids.map(id => S.stops.find(s => s.id === id)).find(s => s && s.status === "todo"); if (o) nextPts.push(posStr(o)); });
+        if (nextPts.length > 2) {
+          const k = nextPts.slice(0, 4);
+          M.append(el("a", { class: "btn ghost", href: gmaps(k[k.length - 1], "driving", null, k.slice(0, -1)), target: "_blank", rel: "noopener", html: ICON.route + `Kolejne ${k.length} postoje w Mapach Google` }));
+        }
+        M.append(el("h2", { style: "margin-top:6px" }, "Dalej na trasie"));
+        M.append(L);
+        return;
+      }
+      const card = el("div", { class: "stopc" },
+        el("div", { class: "num" }, String(n)),
+        el("div", { class: "t" },
+          el("div", { class: "a" }, walk ? open.map(addrLine).join(" · ") : addrLine(open[0])),
+          el("div", { class: "s" },
+            ...[...new Set(open.map(s => s.kind))].map(k => el("span", { class: "tag " + k }, k === "D" ? `Dor. ${open.filter(s => s.kind === k).length}` : `Odb. ${open.filter(s => s.kind === k).length}`)),
+            walk ? el("span", { class: "tag walk" }, `Pieszo ${c.walkM} m`) : null,
+            open.some(s => s.check) ? el("span", { class: "tag chk" }, "Sprawdź") : null,
+            el("span", {}, open.map(s => s.name).filter(Boolean).join(", ")))),
+        el("div", { class: "eta2", style: lateS > 60 ? "color:var(--bad)" : null }, fmtClock(arrive), el("small", {}, lateS > 60 ? `po ${hhmm(win.to)}!` : winTxt(win) ? winTxt(win) : leg.delay > 60 ? `korek +${fmtMin(leg.delay)}` : fmtMin(leg.sec))));
+      card.addEventListener("click", () => {
+        if (card.classList.contains("open")) return;
+        card.classList.add("open"); card.lastChild.remove();
+        card.append(el("div", { class: "more" }, ...open.map(s => parcelRow(s, { actions: true, walk })),
+          el("div", { class: "row", style: "margin-top:8px" },
+            el("a", { class: "btn small ghost", href: gmaps(posStr(open[0]), "driving"), target: "_blank", rel: "noopener", html: ICON.nav + "Nawiguj" }),
+            iconBtn("route", "Jedź tu teraz", { class: "small", onclick: ev => { ev.stopPropagation(); pinNext(open); } }))));
+      });
+      L.append(card);
+    });
+    if (!nextShown) {
+      M.append(el("div", { class: "empty" }, el("h3", { style: "font-size:26px" }, todo.length ? "Trasa wymaga przeliczenia" : "Wszystko rozwiezione"),
+        el("p", { class: "muted", style: "margin:0" }, todo.length ? "Są przesyłki poza trasą." : `Doręczenia ${dD}/${nD.length}, odbiory ${dP}/${nP.length}.`),
+        el("div", { class: "row" }, todo.length ? iconBtn("route", "Przelicz trasę", { class: "primary", onclick: () => optimize() }) : null,
+          S.ret && S.start ? el("a", { class: "btn", href: gmaps(posStr(S.start), "driving"), target: "_blank", rel: "noopener", html: ICON.nav + "Wróć do bazy" }) : null)));
+    }
+    if (!L.children.length && nextShown) L.append(el("p", { class: "muted", style: "margin:0" }, "To ostatni postój."));
+    const unplaced = todo.filter(s => !hasPos(s));
+    if (unplaced.length) {
+      M.append(el("h2", {}, "Bez położenia na mapie"));
+      const U = el("div", { class: "list" }); unplaced.forEach(s => U.append(el("div", { class: "stopc open" }, el("div", { class: "num" }, "?"), el("div", { class: "t" }, parcelRow(s, { actions: true }))))); M.append(U);
+    }
+    M.append(el("div", { class: "row" }, iconBtn("route", "Przelicz od miejsca, gdzie jestem", { class: "grow", onclick: () => optimize() })));
+  }
+
+  // finished
+  const DB = $("#doneBox"); DB.replaceChildren();
+  if (fin.length) {
+    const det = el("details", { class: "sec" }, el("summary", {}, el("span", {}, `Zakończone (${fin.length})`), el("span", { class: "muted" }, "pokaż")));
+    fin.slice().sort((a, b) => b.at - a.at).forEach(s => det.append(el("div", { class: "doneitem" },
+      el("span", { class: "tag " + (s.status === "done" ? "ok" : "bad") }, s.status === "done" ? (s.kind === "D" ? "Doręczono" : "Odebrano") : "Nieudana"),
+      el("span", { class: "grow" }, addrLine(s), el("span", { class: "muted" }, " · " + fmtClock(s.at))),
+      el("button", { class: "small ghost", onclick: () => mark(s.id, "todo") }, "Przywróć"))));
+    if (fin.some(s => s.status === "done")) det.append(el("div", { class: "row", style: "padding:10px 0" }, el("button", { class: "small", onclick: removeFinished }, "Usuń doręczone i odebrane z listy")));
+    DB.append(det);
+  }
+
+  drawMap();
+  // settings fields
+  $("#startIn").value = S.start ? S.start.label : "";
+  $("#startInfo").textContent = S.start ? (S.start.geo === "tt" ? "Położenie z TomTom" : S.start.geo === "demo" ? "Przykład" : hasPos(S.start) ? "Położenie przybliżone" : "Nie znaleziono na mapie") : "Brak – trasa zacznie się od pierwszej przesyłki.";
+  $("#retBase").checked = !!S.ret;
+  $("#useGps").checked = S.gps !== false;
+  $("#walkM").value = S.walkM ?? 100;
+  $("#capInfo").textContent = [clKey() ? "Etykiety czyta Claude (Twój klucz)." : "Etykiety czyta telefon (za darmo); adres sprawdzasz przed zapisem.", ttKey() ? (caps.tt === "bad" ? "Klucz TomTom nie działa." : "Korki i adresy: TomTom.") : "Adresy: OpenStreetMap, bez korków.", "Trasa i klucze są zapisane tylko na tym telefonie."].join(" ");
+  if (document.activeElement !== $("#kClaude")) $("#kClaude").value = K.claude || "";
+  if (document.activeElement !== $("#kTT")) $("#kTT").value = K.tomtom || "";
+}
+
+let LM = null, LL = null;
+function drawMap() {
+  if (window.L) return drawLeaflet();
+  $("#lmap").hidden = true; $("#map").removeAttribute("hidden");
+  drawSketch();
+}
+function drawLeaflet() {
+  const box = $("#mapBox"), R0 = S.route;
+  if (!R0 || !R0.clusters.length) { box.hidden = true; return; }
+  box.hidden = false;
+  if (!LM) {
+    LM = L.map("lmap", { zoomControl: false, attributionControl: true });
+    L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19, attribution: "© OpenStreetMap" }).addTo(LM);
+    LL = L.layerGroup().addTo(LM);
+  }
+  LL.clearLayers();
+  const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+  const openOf = c => c.ids.map(id => S.stops.find(s => s.id === id)).filter(s => s && s.status === "todo");
+  const line = [[R0.from.lat, R0.from.lon]], pts = [[R0.from.lat, R0.from.lon]];
+  L.circleMarker([R0.from.lat, R0.from.lon], { radius: 6, color: css("--ink"), fillColor: css("--ink"), fillOpacity: 1, weight: 2 }).bindTooltip(R0.from.label || "Start").addTo(LL);
+  let n = 0, first = true;
+  R0.clusters.forEach(c => {
+    const open = openOf(c); if (!open.length) return;
+    n++; line.push([c.lat, c.lon]); pts.push([c.lat, c.lon]);
+    const col = first ? css("--accent") : open.every(s => s.kind === "P") ? css("--pick") : css("--deliv");
+    if (open.length > 1) L.circle([c.lat, c.lon], { radius: Math.max(40, S.walkM || 100), color: css("--walk"), weight: 1.5, dashArray: "4 4", fill: false }).addTo(LL);
+    const ic = L.divIcon({ className: "", iconSize: [26, 26], iconAnchor: [13, 13], html: `<div style="width:26px;height:26px;border-radius:50%;background:${col};color:#fff;display:grid;place-items:center;font:700 14px/1 'Barlow Condensed',sans-serif;border:2px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,.35)">${n}</div>` });
+    L.marker([c.lat, c.lon], { icon: ic }).bindTooltip(open.map(addrLine).join(" · ")).addTo(LL);
+    first = false;
+  });
+  if (R0.ret) line.push([R0.from.lat, R0.from.lon]);
+  L.polyline(line, { color: css("--muted"), weight: 3, opacity: .7 }).addTo(LL);
+  setTimeout(() => { LM.invalidateSize(); if (pts.length > 1) LM.fitBounds(pts, { padding: [24, 24], maxZoom: 16 }); else LM.setView(pts[0], 15); }, 0);
+}
+function drawSketch() {
+  const box = $("#mapBox"), svg = $("#map");
+  const R0 = S.route;
+  if (!R0) { box.hidden = true; return; }
+  const pts = [R0.from, ...R0.clusters]; if (pts.length < 2) { box.hidden = true; return; }
+  box.hidden = false;
+  const W = 400, H = 240, P = 18;
+  const lats = pts.map(p => p.lat), lons = pts.map(p => p.lon);
+  const k = Math.cos(rad(lats[0]));
+  let x0 = Math.min(...lons), x1 = Math.max(...lons), y0 = Math.min(...lats), y1 = Math.max(...lats);
+  const sx = (x1 - x0) * k || 1e-4, sy = (y1 - y0) || 1e-4, sc = Math.min((W - 2 * P) / sx, (H - 2 * P) / sy);
+  const ox = (W - sx * sc) / 2, oy = (H - sy * sc) / 2;
+  const X = p => ox + (p.lon - x0) * k * sc, Y = p => H - (oy + (p.lat - y0) * sc);
+  const NS = "http://www.w3.org/2000/svg", mk = (t, a) => { const e = document.createElementNS(NS, t); for (const [kk, v] of Object.entries(a)) e.setAttribute(kk, v); return e; };
+  svg.replaceChildren();
+  const openOf = c => c.ids.map(id => S.stops.find(s => s.id === id)).filter(s => s && s.status === "todo");
+  let d = `M${X(R0.from).toFixed(1)},${Y(R0.from).toFixed(1)}`;
+  R0.clusters.forEach(c => { d += ` L${X(c).toFixed(1)},${Y(c).toFixed(1)}`; });
+  if (R0.ret) d += ` L${X(R0.from).toFixed(1)},${Y(R0.from).toFixed(1)}`;
+  svg.append(mk("path", { d, fill: "none", stroke: "var(--line)", "stroke-width": 3, "stroke-linejoin": "round" }));
+  svg.append(mk("rect", { x: X(R0.from) - 6, y: Y(R0.from) - 6, width: 12, height: 12, fill: "var(--ink)" }));
+  let n = 0, first = true;
+  R0.clusters.forEach(c => {
+    const open = openOf(c); const done = !open.length;
+    if (!done) n++;
+    const col = done ? "var(--line)" : open.every(s => s.kind === "P") ? "var(--pick)" : "var(--deliv)";
+    if (!done && open.length > 1) svg.append(mk("circle", { cx: X(c), cy: Y(c), r: 15, fill: "none", stroke: "var(--walk)", "stroke-width": 1.5, "stroke-dasharray": "3 3" }));
+    svg.append(mk("circle", { cx: X(c), cy: Y(c), r: !done && first ? 11 : 9, fill: !done && first ? "var(--accent)" : col }));
+    if (!done) { const t = mk("text", { x: X(c), y: Y(c) + 4, "text-anchor": "middle", "font-size": 11, "font-family": "Barlow Condensed, sans-serif", "font-weight": 700, fill: "var(--surface)" }); t.textContent = n; svg.append(t); first = false; }
+  });
+}
+
+/* ---------- events ---------- */
+$("#cam").addEventListener("change", e => { const f = e.target.files; if (f && f.length) readLabels(f); e.target.value = ""; });
+$("#gal").addEventListener("change", e => { const f = e.target.files; if (f && f.length) readLabels(f); e.target.value = ""; });
+$("#addBtn").addEventListener("click", () => openForm());
+document.querySelectorAll(".seg button").forEach(b => b.addEventListener("click", () => setKind(b.dataset.kind)));
+$("#fCancel").addEventListener("click", closeForm);
+$("#sheet").addEventListener("close", ocrNext);
+$("#keysSave").addEventListener("click", () => {
+  K.tomtom = $("#kTT").value.trim(); K.claude = $("#kClaude").value.trim(); keysSet(K); caps.tt = "unknown";
+  toast("Zapisano klucze"); render(); if (S.route && ttKey()) optimize();
+});
+$("#useGps").addEventListener("change", e => { S.gps = e.target.checked; save(); });
+$("#fRemove").addEventListener("click", () => { $("#fDel").hidden = false; });
+$("#fDelYes").addEventListener("click", () => {
+  const s = S.stops.find(x => x.id === editId); if (!s) return closeForm();
+  S.stops = S.stops.filter(x => x.id !== editId); save(); closeForm(); render();
+  toast("Usunięto: " + addrLine(s), () => { S.stops.push(s); save(); render(); });
+});
+$("#form").addEventListener("submit", async e => {
+  e.preventDefault();
+  const v = id => $(id).value.trim();
+  if (!v("#fStreet") && !v("#fCity")) { $("#fStreet").focus(); toast("Wpisz przynajmniej ulicę i miejscowość."); return; }
+  const data = { kind: formKind, name: v("#fName"), street: v("#fStreet"), no: v("#fNo"), flat: v("#fFlat"), post: v("#fPost"), city: v("#fCity"), phone: v("#fPhone"), note: v("#fNote"), count: Math.max(1, parseInt(v("#fCount")) || 1), from: v("#fFrom"), to: v("#fTo") };
+  closeForm();
+  if (editId) {
+    const s = S.stops.find(x => x.id === editId); if (!s) return;
+    const moved = geoQuery(s) !== geoQuery(data), rewin = (s.from || "") !== data.from || (s.to || "") !== data.to;
+    Object.assign(s, data, { check: false });
+    if (moved) { s.lat = null; s.lon = null; s.geo = null; busy(true, "Szukam adresu na mapie…"); try { await geocodeStop(s); } finally { busy(false); } }
+    if ((moved || rewin) && S.route) { save(); await optimize(true); }
+    save(); render(); toast("Zapisano");
+  } else {
+    await addStops([{ id: uid(), ...data, lat: null, lon: null, geo: null, status: "todo", at: null, check: false }]);
+    toast("Dodano: " + addrLine(data));
+  }
+});
+$("#pasteBtn").addEventListener("click", () => { $("#pasteTxt").value = ""; try { $("#pasteSheet").showModal(); } catch { $("#pasteSheet").setAttribute("open", ""); } });
+$("#pasteCancel").addEventListener("click", () => $("#pasteSheet").close());
+$("#pasteForm").addEventListener("submit", async e => {
+  e.preventDefault();
+  const txt = $("#pasteTxt").value.trim(); $("#pasteSheet").close(); if (!txt) return;
+  busy(true, "Rozpoznaję adresy…");
+  try {
+    let list;
+    if (clKey()) {
+      const arr = await claudeJSON(`Zamień listę adresów kuriera na JSON. Odpowiedz tylko tablicą: [{"kind":"D"|"P","name":string,"street":string,"no":string,"flat":string,"post":string,"city":string,"phone":string,"note":string,"count":number,"from":"HH:MM"|"","to":"HH:MM"|""}]. "from"/"to" = okno czasowe, jeśli podane (np. "do 15", "10-12"). "P" gdy linia mówi o odbiorze (odbiór, pickup, nadanie), inaczej "D".\n\nLista:\n${txt.slice(0, 20000)}`);
+      list = (Array.isArray(arr) ? arr : []).filter(r => r && (r.street || r.city)).map(toStop);
+    } else {
+      list = txt.split(/\n+/).map(l => l.trim()).filter(Boolean).map(l => {
+        const r = parseLabelText(l.replace(/^(odbi[oó]r|pickup)\s*[:\-]?\s*/i, "ul. ").replace(/^ul\. (ul\.|al\.|pl\.|os\.)/i, "$1"));
+        if (/^(odbi[oó]r|pickup)/i.test(l)) r.kind = "P";
+        const w = /\b(?:do|przed)\s*(\d{1,2})(?:[:.](\d{2}))?\b/i.exec(l); if (w) r.to = w[1].padStart(2, "0") + ":" + (w[2] || "00");
+        if (!r.street) { const m = /^([^,\d]+?)\s+(\d+[A-Za-z]?)(?:\/(\d+))?\s*(?:,|$)/.exec(l.replace(/^(odbi[oó]r|pickup)\s*[:\-]?\s*/i, "")); if (m) { r.street = m[1]; r.no = m[2]; r.flat = m[3] || ""; } }
+        if (!r.city) { const c = /,\s*(?:\d{2}-\d{3}\s+)?([^,\d]+)\s*$/.exec(l); if (c) r.city = c[1].trim(); }
+        return r;
+      }).filter(r => r.street || r.city).map(toStop);
+    }
+    if (!list.length) { toast("Nie rozpoznałam żadnego adresu."); return; }
+    await addStops(list); toast(`Dodano ${list.length} adresów`);
+  } catch (e2) { toast("Nie udało się rozpoznać listy. Spróbuj ponownie."); }
+  finally { busy(false); }
+});
+$("#startSave").addEventListener("click", async () => {
+  const q = $("#startIn").value.trim();
+  if (!q) { S.start = null; save(); render(); return; }
+  if (S.demo) { S = Object.assign(EMPTY(), { walkM: S.walkM, ret: S.ret }); }
+  const st = { label: q, street: q, no: "", post: "", city: "", lat: null, lon: null, geo: null };
+  busy(true, "Szukam bazy na mapie…");
+  try { await geocodeStop(st); } finally { busy(false); }
+  S.start = { label: q, lat: st.lat, lon: st.lon, geo: st.geo }; save(); render();
+  toast(hasPos(S.start) ? "Zapisano bazę" : "Nie znalazłam tego adresu na mapie. Dodaj miasto i kod.");
+  if (S.route) optimize(true);
+});
+$("#retBase").addEventListener("change", e => { S.ret = e.target.checked; save(); if (S.route) optimize(true); else render(); });
+$("#walkM").addEventListener("change", e => { S.walkM = Math.max(0, Math.min(500, parseInt(e.target.value) || 0)); save(); if (S.route) optimize(true); else render(); });
+$("#clearAll").addEventListener("click", () => { $("#clearConfirm").hidden = false; });
+$("#clearNo").addEventListener("click", () => { $("#clearConfirm").hidden = true; });
+$("#clearYes").addEventListener("click", () => { const keep = { start: S.demo ? null : S.start, walkM: S.walkM, ret: S.ret }; S = Object.assign(EMPTY(), keep); $("#clearConfirm").hidden = true; save(); render(); toast("Nowy dzień – lista pusta"); });
+
+/* ---------- boot ---------- */
+const stored = lsGet();
+if (stored && stored.v === 1) S = stored;
+if (S.demo && !S.route) {
+  // lay out the sample instantly with the distance model
+  const fromD = { lat: S.start.lat, lon: S.start.lon, label: S.start.label };
+  const cl = clusterize(S.stops, S.walkM), { best } = solve(fromD, cl, false);
+  const pts = [fromD, ...best.map(i => cl[i])], legs = [];
+  for (let i = 1; i < pts.length; i++) { const m = hav(pts[i - 1], pts[i]); legs.push({ sec: driveEst(m), m: m * ROAD, delay: 0 }); }
+  S.route = { clusters: best.map(i => cl[i]), legs, total: { sec: legs.reduce((a, l) => a + l.sec, 0), m: legs.reduce((a, l) => a + l.m, 0), delay: 0 }, source: "est", at: Date.now(), from: fromD, ret: false, unplaced: [] };
+}
+render();
+
+if ("serviceWorker" in navigator) { window.addEventListener("load", () => navigator.serviceWorker.register("sw.js").catch(() => {})); }
+})();
+</script>
+</body>
+</html>
