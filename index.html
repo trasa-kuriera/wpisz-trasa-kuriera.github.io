@@ -238,7 +238,7 @@ textarea{min-height:120px;resize:vertical}
 
 <dialog id="pasteSheet"><form class="sheet" id="pasteForm" method="dialog">
   <h3 style="font-size:24px">Wklej listę adresów</h3>
-  <p class="muted" style="margin:0">Jeden adres w linii. Dopisz „odbiór”, jeśli to odbiór przesyłki.</p>
+  <p class="muted" style="margin:0">Jeden adres w linii. Dopisz „odbiór”, jeśli to odbiór przesyłki. Możesz też wkleić całą listę przygotowaną przez Claude w czacie.</p>
   <textarea id="pasteTxt" placeholder="ul. Puławska 145, 02-715 Warszawa&#10;odbiór: ul. Woronicza 17, Warszawa"></textarea>
   <div class="row"><button type="submit" class="primary grow">Dodaj do trasy</button><button type="button" id="pasteCancel" class="ghost">Anuluj</button></div>
 </form></dialog>
@@ -565,12 +565,15 @@ const ocrQueue = [];
 async function addStops(list) {
   if (S.demo) { const keep = { walkM: S.walkM, ret: S.ret }; S = Object.assign(EMPTY(), keep); }
   // merge duplicates: same address & kind -> bump count
+  let k = 0;
   for (const s of list) {
+    k++;
     const dup = S.stops.find(o => o.status === "todo" && o.kind === s.kind && addrFull(o).toLowerCase() === addrFull(s).toLowerCase() && (o.name || "").toLowerCase() === (s.name || "").toLowerCase());
     if (dup) { dup.count += s.count; continue; }
     S.stops.push(s);
-    busy(true, "Szukam adresu na mapie…");
+    busy(true, list.length > 1 ? `Szukam adresów na mapie ${k}/${list.length}…` : "Szukam adresu na mapie…");
     try { await geocodeStop(s); } finally { busy(false); }
+    save();
   }
   save(); render();
   await optimize(true);
@@ -953,7 +956,15 @@ function render() {
   if (document.activeElement !== $("#kTT")) $("#kTT").value = K.tomtom || "";
 }
 
-let LM = null, LL = null;
+let LM = null, LL = null, GPSM = null, gpsWatch = null;
+function startGpsDot() {
+  if (gpsWatch != null || !LM || S.gps === false || !navigator.geolocation) return;
+  gpsWatch = navigator.geolocation.watchPosition(p => {
+    const ll = [p.coords.latitude, p.coords.longitude];
+    if (!GPSM) GPSM = L.circleMarker(ll, { radius: 8, color: "#fff", weight: 3, fillColor: "#1A73E8", fillOpacity: 1 }).bindTooltip("Tu jesteś").addTo(LM);
+    else GPSM.setLatLng(ll);
+  }, () => {}, { enableHighAccuracy: true, maximumAge: 15000 });
+}
 function drawMap() {
   if (window.L) return drawLeaflet();
   $("#lmap").hidden = true; $("#map").removeAttribute("hidden");
@@ -984,6 +995,7 @@ function drawLeaflet() {
     first = false;
   });
   if (R0.ret) line.push([R0.from.lat, R0.from.lon]);
+  startGpsDot();
   L.polyline(line, { color: css("--muted"), weight: 3, opacity: .7 }).addTo(LL);
   setTimeout(() => { LM.invalidateSize(); if (pts.length > 1) LM.fitBounds(pts, { padding: [24, 24], maxZoom: 16 }); else LM.setView(pts[0], 15); }, 0);
 }
@@ -1063,7 +1075,15 @@ $("#pasteForm").addEventListener("submit", async e => {
   busy(true, "Rozpoznaję adresy…");
   try {
     let list;
-    if (clKey()) {
+    // a list prepared by Claude in the chat comes as JSON: take it as it is
+    const asJson = /^\s*(```|\[|\{)/.test(txt) ? parseJSONLoose(txt) : null;
+    if (asJson) {
+      list = (Array.isArray(asJson) ? asJson : [asJson]).filter(r => r && (r.street || r.city)).map(r => {
+        const s = toStop(r);
+        if (typeof r.lat === "number" && typeof r.lon === "number") { s.lat = r.lat; s.lon = r.lon; s.geo = "est"; }
+        return s;
+      });
+    } else if (clKey()) {
       const arr = await claudeJSON(`Zamień listę adresów kuriera na JSON. Odpowiedz tylko tablicą: [{"kind":"D"|"P","name":string,"street":string,"no":string,"flat":string,"post":string,"city":string,"phone":string,"note":string,"count":number,"from":"HH:MM"|"","to":"HH:MM"|""}]. "from"/"to" = okno czasowe, jeśli podane (np. "do 15", "10-12"). "P" gdy linia mówi o odbiorze (odbiór, pickup, nadanie), inaczej "D".\n\nLista:\n${txt.slice(0, 20000)}`);
       list = (Array.isArray(arr) ? arr : []).filter(r => r && (r.street || r.city)).map(toStop);
     } else {
